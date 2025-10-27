@@ -10,9 +10,9 @@ import path from "path";
 const app = express();
 app.use(bodyParser.json());
 
-// 🔹 Allow frontend calls (Vite dev server)
+// 🔹 Allow frontend calls (Vite React localhost)
 app.use(cors({
-  origin: "http://localhost:5173", // <-- fixed port
+  origin: "http://localhost:5173",
   credentials: true,
 }));
 
@@ -33,7 +33,24 @@ function encryptWithIBMKey(plainText) {
   return encrypted.toString("base64");
 }
 
-// 🔒 Encrypt user+pin and call IBM API
+// Helper to call IBM APIs using x-hash
+async function callIbmApi(url, xHash, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "X-Hash-Value": xHash,
+      "X-IBM-Client-Id": "924726a273f72a75733787680810c4e4",
+      "X-IBM-Client-Secret": "7154c95b3351d88cb31302f297eb5a9c",
+      "X-Channel": "subgateway",
+      "Content-Type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+// 🔒 Encrypt user+pin and call IBM login API + all subsequent APIs
 app.post("/api/encrypt", async (req, res) => {
   try {
     const { number, pin } = req.body;
@@ -44,8 +61,8 @@ app.post("/api/encrypt", async (req, res) => {
 
     console.log("Encrypted payload (Base64):", encryptedValue);
 
-    // 🌐 Call IBM login API
-    const ibmResponse = await fetch(
+    // IBM Login API
+    const ibmLogin = await fetch(
       "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/CorporateLogin/",
       {
         method: "POST",
@@ -59,53 +76,78 @@ app.post("/api/encrypt", async (req, res) => {
       }
     );
 
-    const result = await ibmResponse.json();
-    console.log("IBM Response:", result);
+    const loginResult = await ibmLogin.json();
+    console.log("IBM Login Response:", loginResult);
 
-    // 🔑 Create x-hash using User~Timestamp
     let xHash = null;
-    if (result.ResponseCode === "0") {
-      const userTimestamp = `${result.User}~${result.Timestamp}`;
+    let additionalApis = {};
+
+    if (loginResult.ResponseCode === "0") {
+      const userTimestamp = `${loginResult.User}~${loginResult.Timestamp}`;
       xHash = encryptWithIBMKey(userTimestamp);
       console.log("Generated x-hash:", xHash);
+
+      // MaToMA Transfer
+      additionalApis.MaToMATransfer = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MaToMA/Transfer",
+        xHash,
+        { Amount: "10", MSISDN: number, ReceiverMSISDN: "923355923388" }
+      );
+
+      // MaToMA Inquiry
+      additionalApis.MaToMAInquiry = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MaToMA/Inquiry",
+        xHash,
+        { Amount: "20", MSISDN: number, ReceiverMSISDN: "923355923388", cnic: "3700448243372" }
+      );
+
+      // SubscriberIBFT Transfer
+      additionalApis.SubscriberIBFTTransfer = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberIBFT/Transfer",
+        xHash,
+        {
+          Amount: "47",
+          BankShortName: "MOD",
+          BankTitle: "MOD",
+          Branch: "00",
+          AccountNumber: "00020000011005325",
+          MSISDN: number,
+          ReceiverMSISDN: "923332810960",
+          ReceiverIBAN: "",
+          SenderName: "ZEESHAN AHMED",
+          TransactionPurpose: "0350",
+          Username: "ZEESHAN AHMED"
+        }
+      );
+
+      // SubscriberIBFT Inquiry
+      additionalApis.SubscriberIBFTInquiry = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberIBFT/Inquiry",
+        xHash,
+        {
+          Amount: "47",
+          BankShortName: "MOD",
+          BankTitle: "MOD",
+          AccountNumber: "00020000011005325",
+          MSISDN: number,
+          ReceiverMSISDN: "923332810960",
+          ReceiverIBAN: "923332810960",
+          TransactionPurpose: "0350"
+        }
+      );
     }
 
     res.json({
       encryptedValue,
-      ibmResult: result,
+      ibmLoginResult: loginResult,
       xHash,
+      additionalApis
     });
+
   } catch (err) {
     console.error("❌ Error:", err);
     res.status(500).json({ error: "Encryption or IBM API call failed" });
   }
-});
-
-// 🔒 Optional local decrypt endpoint
-app.post("/api/decrypt", (req, res) => {
-  try {
-    const { encryptedBase64, privateKeyPem } = req.body;
-    if (!encryptedBase64 || !privateKeyPem)
-      return res.status(400).json({ error: "Provide encryptedBase64 and privateKeyPem" });
-
-    const decrypted = crypto.privateDecrypt(
-      { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_PADDING },
-      Buffer.from(encryptedBase64, "base64")
-    );
-
-    res.json({ decrypted: decrypted.toString("utf8") });
-  } catch (e) {
-    console.error("Decryption failed:", e.message);
-    res.status(400).json({ error: "Decryption failed" });
-  }
-});
-
-// 🔒 Example protected API using x-hash
-app.post("/api/protected", (req, res) => {
-  const xHash = req.headers["x-hash"];
-  if (!xHash) return res.status(401).json({ error: "x-hash header missing" });
-
-  res.json({ message: "Protected API accessed!", xHashReceived: xHash });
 });
 
 app.listen(5000, () => console.log("✅ Backend running at http://localhost:5000"));
