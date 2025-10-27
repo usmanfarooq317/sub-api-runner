@@ -46,6 +46,9 @@ async function callIbmApi(url, xHash, body) {
   return res.json();
 }
 
+// Global variable to store the xHash after successful login
+let globalXHash = null;
+
 // Encrypt + IBM login + call all APIs
 app.post("/api/encrypt", async (req, res) => {
   try {
@@ -71,14 +74,15 @@ app.post("/api/encrypt", async (req, res) => {
     );
     const loginResult = await ibmLogin.json();
 
-    let xHash = null;
     let additionalApis = {};
 
     if (loginResult.ResponseCode === "0") {
       const userTimestamp = `${loginResult.User}~${loginResult.Timestamp}`;
-      xHash = encryptWithIBMKey(userTimestamp);
+      globalXHash = encryptWithIBMKey(userTimestamp); // Store xHash globally
 
-      // 🌐 Call all APIs
+      // 🌐 Start all general API calls
+      const xHash = globalXHash; // Use the newly generated hash
+
       additionalApis.MaToMATransfer = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MaToMA/Transfer",
         xHash,
@@ -124,7 +128,6 @@ app.post("/api/encrypt", async (req, res) => {
         }
       );
 
-      // 🌐 New APIs: MAtoCNIC Transfer & Inquiry
       additionalApis.MAtoCNICTransfer = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MAtoCNIC/Transfer",
         xHash,
@@ -136,13 +139,109 @@ app.post("/api/encrypt", async (req, res) => {
         xHash,
         { Amount: "15", MSISDN: number, ReceiverMSISDN: number, ReceiverCNIC: "3520207345019" }
       );
+      
+      additionalApis.MaToMerchantTransfer = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/matomerchant/transfer",
+        xHash,
+        {
+          "Amount": "10.00",
+          "QuoteId":"1438964",
+          "MSISDN": number,
+          "MPOS": "923482665224",
+          "ReceiverMsisdn": "923482665224"
+        }
+      );
+
+      additionalApis.MaToMerchantInquiry = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/matomerchant/inquiry",
+        xHash,
+        {
+          "Amount": "10.00",
+          "MSISDN": number,
+          "MPOS": "923482665224",
+          "ReceiverMsisdn": "923482665224"
+        }
+      );
+
+      additionalApis.SubscriberUBPTransfer = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberUtilityBill/Payment",
+        xHash,
+        {
+          "Amount": "100.00",
+          "ConsumerNumber": "01261110004080",
+          "MSISDN": number,
+          "Company": "PESCO"
+        }
+      );
+
+      additionalApis.SubscriberUBPInquiry = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberUtilityBill/Inquiry",
+        xHash,
+        {
+          "ConsumerNumber": "01261110004080",
+          "MSISDN": number,
+          "Company": "PESCO"
+        }
+      );
+      
+      additionalApis.AccountLimitKYC = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/accountlimit_kyc/AccountLimitKYC",
+        xHash,
+        {
+          "msisdn": number,
+          "basicinfo": "true",
+          "additionalinfo": "true",
+          "personalinfo": "true",
+          "address": "true",
+          "cnic": "true",
+          "account": "true",
+          "email": "true",
+          "aml": "true",
+          "expirydate": "true"
+        }
+      );
+
+      additionalApis.AccountBalance = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/account-balance/account-bal",
+        xHash,
+        {
+          "msisdn": number
+        }
+      );
     }
 
-    res.json({ encryptedValue, ibmLoginResult: loginResult, xHash, additionalApis });
+    res.json({ encryptedValue, ibmLoginResult: loginResult, xHash: globalXHash, additionalApis });
 
   } catch (err) {
     console.error("❌ Error:", err);
     res.status(500).json({ error: "Encryption or IBM API call failed" });
+  }
+});
+
+// 🟢 New dedicated route for Transaction Status Inquiry
+app.post("/api/inquire-transaction-status", async (req, res) => {
+  try {
+    const { transactionID } = req.body;
+    
+    if (!globalXHash) {
+      return res.status(401).json({ error: "X-Hash not available. Please perform login first." });
+    }
+
+    if (!transactionID) {
+      return res.status(400).json({ error: "transactionID is required." });
+    }
+
+    const transactionStatusResult = await callIbmApi(
+      "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/transaction-status-inquiry/TransactionStatusInquiry",
+      globalXHash, // Use the stored global hash
+      { transactionID }
+    );
+
+    res.json({ transactionStatusResult });
+
+  } catch (err) {
+    console.error("❌ Error during Transaction Status Inquiry:", err);
+    res.status(500).json({ error: "Transaction Status Inquiry failed" });
   }
 });
 

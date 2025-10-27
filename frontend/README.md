@@ -1,16 +1,41 @@
-# React + Vite
+🔐 IBM/RSA Login & API Tester (Client-Server Demo)
+This project demonstrates a React frontend interacting with a Node/Express backend to perform a simulated RSA-encrypted corporate login, generate an X-Hash token, and execute a suite of downstream financial and account APIs. It also includes a dedicated interface for checking Transaction Status Inquiry.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+🚀 Setup and Installation
+Prerequisites
+Node.js: Ensure you have Node.js (v14+) installed.
 
-Currently, two official plugins are available:
+subgateway.pem: You must have the IBM public key file named subgateway.pem in the root directory of your backend project. This is essential for the RSA encryption.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+1. Project Structure
+Create the following files in your project directory:
 
-## React Compiler
+/rsa-api-tester
+├── subgateway.pem      <-- 🚨 REQUIRED IBM Public Key File
+├── server.js           <-- Backend logic (Node/Express)
+└── App.jsx             <-- Frontend logic (React)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. Install Dependencies
+Since this is a client-server application, you need to install dependencies for both the frontend (implied by the environment) and the backend.
 
-## Expanding the ESLint configuration
+For the backend (where server.js resides), you'll need express, cors, body-parser, node-fetch, and crypto (which is built-in).
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Install backend dependencies (in the directory containing server.js)
+npm install express cors body-parser node-fetch
+
+3. Running the Application
+Start the Backend:
+
+node server.js
+# You should see: "✅ Backend running at http://localhost:5000"
+
+Run the Frontend:
+You will need a typical React environment (like Vite or Create React App) to run App.jsx, which usually starts on port 5173 or 3000. Ensure the frontend is running, as the App.jsx connects to http://localhost:5000.
+
+⚙️ Code
+1. server.js (Backend)
+This Express server handles:
+
+Login & Bulk APIs (/api/encrypt): Encrypts the number:pin payload, performs the corporate login, generates the X-Hash, and immediately executes 12 other APIs using the generated hash.
+
+Transaction Status Inquiry (/api/inquire-transaction-status): A dedicated endpoint that uses the globally stored X-Hash to check the status of a specific transactionID.
