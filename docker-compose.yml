@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # --- Backend Service (Node/Express) ---
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rsa-api-backend
+    # Mount local files for easy development/debugging
+    volumes:
+      - ./backend/server.js:/usr/src/app/server.js
+      - ./backend/package.json:/usr/src/app/package.json
+      - ./subgateway.pem:/usr/src/app/subgateway.pem
+    ports:
+      - "5000:5000"
+    # Ensure the frontend can connect to the backend's internal name (http://backend:5000)
+    # The frontend runs on the host, so it uses http://localhost:5000
+
+  # --- Frontend Service (React/Nginx) ---
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: rsa-api-frontend
+    # Note: Running the frontend build static files and serving them with Nginx 
+    # is much more reliable in production than mounting volumes for development server.
+    ports:
+      - "5173:80" # Maps host port 5173 to container port 80 (Nginx default)
+    depends_on:
+      - backend
