@@ -10,30 +10,26 @@ import path from "path";
 const app = express();
 app.use(bodyParser.json());
 
-// 🔹 Allow frontend calls (Vite React localhost)
 app.use(cors({
   origin: "http://localhost:5173",
   credentials: true,
 }));
 
-// 🔑 Load IBM public key from file
+// Load IBM public key
 const PUBLIC_KEY_PATH = path.join(process.cwd(), "subgateway.pem");
 const IBM_PUBLIC_KEY = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
 
-// Function to encrypt data using IBM public key (RSA PKCS#1)
+// Encrypt helper
 function encryptWithIBMKey(plainText) {
   const buffer = Buffer.from(plainText, "utf-8");
   const encrypted = crypto.publicEncrypt(
-    {
-      key: IBM_PUBLIC_KEY,
-      padding: crypto.constants.RSA_PKCS1_PADDING,
-    },
+    { key: IBM_PUBLIC_KEY, padding: crypto.constants.RSA_PKCS1_PADDING },
     buffer
   );
   return encrypted.toString("base64");
 }
 
-// Helper to call IBM APIs using x-hash
+// Call IBM API helper
 async function callIbmApi(url, xHash, body) {
   const res = await fetch(url, {
     method: "POST",
@@ -50,7 +46,7 @@ async function callIbmApi(url, xHash, body) {
   return res.json();
 }
 
-// 🔒 Encrypt user+pin and call IBM login API + all subsequent APIs
+// Encrypt + IBM login + call all APIs
 app.post("/api/encrypt", async (req, res) => {
   try {
     const { number, pin } = req.body;
@@ -58,8 +54,6 @@ app.post("/api/encrypt", async (req, res) => {
 
     const payload = `${number}:${pin}`;
     const encryptedValue = encryptWithIBMKey(payload);
-
-    console.log("Encrypted payload (Base64):", encryptedValue);
 
     // IBM Login API
     const ibmLogin = await fetch(
@@ -75,9 +69,7 @@ app.post("/api/encrypt", async (req, res) => {
         body: JSON.stringify({ LoginPayload: encryptedValue }),
       }
     );
-
     const loginResult = await ibmLogin.json();
-    console.log("IBM Login Response:", loginResult);
 
     let xHash = null;
     let additionalApis = {};
@@ -85,23 +77,20 @@ app.post("/api/encrypt", async (req, res) => {
     if (loginResult.ResponseCode === "0") {
       const userTimestamp = `${loginResult.User}~${loginResult.Timestamp}`;
       xHash = encryptWithIBMKey(userTimestamp);
-      console.log("Generated x-hash:", xHash);
 
-      // MaToMA Transfer
+      // 🌐 Call all APIs
       additionalApis.MaToMATransfer = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MaToMA/Transfer",
         xHash,
         { Amount: "10", MSISDN: number, ReceiverMSISDN: "923355923388" }
       );
 
-      // MaToMA Inquiry
       additionalApis.MaToMAInquiry = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MaToMA/Inquiry",
         xHash,
         { Amount: "20", MSISDN: number, ReceiverMSISDN: "923355923388", cnic: "3700448243372" }
       );
 
-      // SubscriberIBFT Transfer
       additionalApis.SubscriberIBFTTransfer = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberIBFT/Transfer",
         xHash,
@@ -120,7 +109,6 @@ app.post("/api/encrypt", async (req, res) => {
         }
       );
 
-      // SubscriberIBFT Inquiry
       additionalApis.SubscriberIBFTInquiry = await callIbmApi(
         "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/SubscriberIBFT/Inquiry",
         xHash,
@@ -135,14 +123,22 @@ app.post("/api/encrypt", async (req, res) => {
           TransactionPurpose: "0350"
         }
       );
+
+      // 🌐 New APIs: MAtoCNIC Transfer & Inquiry
+      additionalApis.MAtoCNICTransfer = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MAtoCNIC/Transfer",
+        xHash,
+        { Amount: "15", MSISDN: number, ReceiverMSISDN: "923482665224", ReceiverCNIC: "3520207345019" }
+      );
+
+      additionalApis.MAtoCNICInquiry = await callIbmApi(
+        "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/MAtoCNIC/Inquiry",
+        xHash,
+        { Amount: "15", MSISDN: number, ReceiverMSISDN: number, ReceiverCNIC: "3520207345019" }
+      );
     }
 
-    res.json({
-      encryptedValue,
-      ibmLoginResult: loginResult,
-      xHash,
-      additionalApis
-    });
+    res.json({ encryptedValue, ibmLoginResult: loginResult, xHash, additionalApis });
 
   } catch (err) {
     console.error("❌ Error:", err);

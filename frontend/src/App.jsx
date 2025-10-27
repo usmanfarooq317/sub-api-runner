@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import "./App.css";
 
 export default function App() {
-  const [number, setNumber] = useState("923319154345"); // default
+  const [number, setNumber] = useState("923319154345");
   const [pin, setPin] = useState("");
   const [encrypted, setEncrypted] = useState("");
-  const [ibmResponse, setIbmResponse] = useState(null);
+  const [ibmLogin, setIbmLogin] = useState(null);
   const [xHash, setXHash] = useState("");
+  const [additionalApis, setAdditionalApis] = useState({});
 
   const handleEncrypt = async () => {
     try {
@@ -17,12 +18,20 @@ export default function App() {
       });
       const data = await res.json();
       setEncrypted(data.encryptedValue);
-      setIbmResponse(data.ibmResult);
+      setIbmLogin(data.ibmLoginResult);
       setXHash(data.xHash || "");
+      setAdditionalApis(data.additionalApis || {});
     } catch (err) {
       alert("Encrypt/IBM call failed: " + err.message);
     }
   };
+
+  const renderApiResponse = (name, data) => (
+    <div className="api-response" key={name}>
+      <h4>{name}</h4>
+      <pre>{JSON.stringify(data, null, 2)}</pre>
+    </div>
+  );
 
   return (
     <div className="app-container">
@@ -54,9 +63,7 @@ export default function App() {
         <div className="result">
           <div className="result-header">
             <span>Encrypted Value</span>
-            <button onClick={() => navigator.clipboard.writeText(encrypted)}>
-              📋 Copy
-            </button>
+            <button onClick={() => navigator.clipboard.writeText(encrypted)}>📋 Copy</button>
           </div>
           <textarea rows={4} readOnly value={encrypted}></textarea>
         </div>
@@ -66,20 +73,18 @@ export default function App() {
         <div className="result">
           <div className="result-header">
             <span>xHash</span>
-            <button onClick={() => navigator.clipboard.writeText(xHash)}>
-              📋 Copy
-            </button>
+            <button onClick={() => navigator.clipboard.writeText(xHash)}>📋 Copy</button>
           </div>
           <textarea rows={2} readOnly value={xHash}></textarea>
         </div>
       )}
 
-      {ibmResponse && (
-        <div className="api-response">
-          <h4>IBM Response</h4>
-          <pre>{JSON.stringify(ibmResponse, null, 2)}</pre>
-        </div>
-      )}
+      {ibmLogin && renderApiResponse("IBM Login Response", ibmLogin)}
+
+      {additionalApis &&
+        Object.keys(additionalApis).map((key) =>
+          renderApiResponse(key, additionalApis[key])
+        )}
     </div>
   );
 }
