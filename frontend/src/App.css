@@ -1,63 +1,67 @@
-body {
-  background: #0f172a;
-  color: #f8fafc;
-  font-family: "Poppins", sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  margin: 0;
-}
-
-.container {
-  width: 420px;
-  background: #1e293b;
-  padding: 25px;
-  border-radius: 16px;
-  box-shadow: 0 0 20px rgba(14, 165, 233, 0.4);
+.app-container {
+  max-width: 450px;
+  margin: 50px auto;
+  padding: 30px;
+  background-color: #f7f8fa;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  font-family: Arial, sans-serif;
 }
 
 h2 {
   text-align: center;
-  margin-bottom: 20px;
-  color: #38bdf8;
+  margin-bottom: 25px;
+  color: #333;
 }
 
-input, textarea {
+.form-group {
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  margin-bottom: 6px;
+  font-weight: bold;
+  color: #555;
+}
+
+input,
+select {
+  padding: 10px 12px;
+  font-size: 16px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+input:focus,
+select:focus {
+  border-color: #007bff;
+}
+
+.encrypt-btn {
   width: 100%;
   padding: 12px;
-  margin-top: 10px;
-  border-radius: 8px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #f1f5f9;
-  font-size: 14px;
-  outline: none;
-  resize: none;
-}
-
-input::placeholder {
-  color: #94a3b8;
-}
-
-button {
-  margin-top: 15px;
-  padding: 10px 20px;
+  background-color: #007bff;
+  color: white;
+  font-size: 16px;
   border: none;
   border-radius: 8px;
-  background: #0ea5e9;
-  color: white;
-  font-weight: 500;
   cursor: pointer;
-  transition: 0.3s ease;
+  transition: background-color 0.2s;
 }
 
-button:hover {
-  background: #0284c7;
+.encrypt-btn:hover {
+  background-color: #0056b3;
 }
 
 .result {
-  margin-top: 20px;
+  margin-top: 25px;
+  padding: 15px;
+  background-color: #eef1f7;
+  border-radius: 8px;
 }
 
 .result-header {
@@ -65,18 +69,23 @@ button:hover {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  font-weight: bold;
 }
 
-.result-header span {
-  font-weight: 600;
+textarea {
+  width: 100%;
+  padding: 10px;
+  font-family: monospace;
+  font-size: 14px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  resize: none;
 }
 
 .api-response {
   margin-top: 20px;
-  background: #334155;
-  padding: 12px;
+  background-color: #fff3cd;
+  padding: 15px;
   border-radius: 8px;
-  color: #e2e8f0;
-  font-size: 14px;
-  overflow-x: auto;
+  border: 1px solid #ffeeba;
 }

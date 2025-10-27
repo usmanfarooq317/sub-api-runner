@@ -1,54 +1,57 @@
+// backend/server.js
 import express from "express";
+import crypto from "crypto";
 import cors from "cors";
+import bodyParser from "body-parser";
+import fetch from "node-fetch";
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import fetch from "node-fetch";
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-// 🗝 IBM Credentials
-const IBM_CLIENT_ID = "924726a273f72a75733787680810c4e4";
-const IBM_CLIENT_SECRET = "7154c95b3351d88cb31302f297eb5a9c";
+// 🔹 Allow frontend calls (Vite dev server)
+app.use(cors({
+  origin: "http://localhost:5173", // <-- fixed port
+  credentials: true,
+}));
 
-const __dirname = path.resolve();
+// 🔑 Load IBM public key from file
+const PUBLIC_KEY_PATH = path.join(process.cwd(), "subgateway.pem");
+const IBM_PUBLIC_KEY = fs.readFileSync(PUBLIC_KEY_PATH, "utf8");
 
-// 📁 Read PEM key directly
-const publicKey = fs.readFileSync(path.join(__dirname, "subgateway.pem"), "utf8");
+// Function to encrypt data using IBM public key (RSA PKCS#1)
+function encryptWithIBMKey(plainText) {
+  const buffer = Buffer.from(plainText, "utf-8");
+  const encrypted = crypto.publicEncrypt(
+    {
+      key: IBM_PUBLIC_KEY,
+      padding: crypto.constants.RSA_PKCS1_PADDING,
+    },
+    buffer
+  );
+  return encrypted.toString("base64");
+}
 
-// 🔒 Encrypt and call IBM API
+// 🔒 Encrypt user+pin and call IBM API
 app.post("/api/encrypt", async (req, res) => {
   try {
     const { number, pin } = req.body;
-    if (!number || !pin) {
-      return res.status(400).json({ error: "number and pin required" });
-    }
+    if (!number || !pin) return res.status(400).json({ error: "number and pin required" });
 
     const payload = `${number}:${pin}`;
-    console.log("Encrypting:", payload);
+    const encryptedValue = encryptWithIBMKey(payload);
 
-    // Encrypt with RSA public key
-    const encryptedBuffer = crypto.publicEncrypt(
-      {
-        key: publicKey,
-        padding: crypto.constants.RSA_PKCS1_PADDING,
-      },
-      Buffer.from(payload)
-    );
+    console.log("Encrypted payload (Base64):", encryptedValue);
 
-    const encryptedValue = encryptedBuffer.toString("base64");
-    console.log("Encrypted value:", encryptedValue);
-
-    // 🌐 Send to IBM API
+    // 🌐 Call IBM login API
     const ibmResponse = await fetch(
       "https://rgw.8798-f464fa20.eu-de.ri1.apiconnect.appdomain.cloud/tmfb/dev-catalog/CorporateLogin/",
       {
         method: "POST",
         headers: {
-          "X-IBM-Client-Id": IBM_CLIENT_ID,
-          "X-IBM-Client-Secret": IBM_CLIENT_SECRET,
+          "X-IBM-Client-Id": "924726a273f72a75733787680810c4e4",
+          "X-IBM-Client-Secret": "7154c95b3351d88cb31302f297eb5a9c",
           "X-Channel": "subgateway",
           "Content-Type": "application/json",
         },
@@ -59,39 +62,50 @@ app.post("/api/encrypt", async (req, res) => {
     const result = await ibmResponse.json();
     console.log("IBM Response:", result);
 
-    res.json({ encryptedValue, ibmResult: result });
+    // 🔑 Create x-hash using User~Timestamp
+    let xHash = null;
+    if (result.ResponseCode === "0") {
+      const userTimestamp = `${result.User}~${result.Timestamp}`;
+      xHash = encryptWithIBMKey(userTimestamp);
+      console.log("Generated x-hash:", xHash);
+    }
+
+    res.json({
+      encryptedValue,
+      ibmResult: result,
+      xHash,
+    });
   } catch (err) {
-    console.error("Error:", err);
-    res.status(500).json({ error: "Encryption or IBM call failed" });
+    console.error("❌ Error:", err);
+    res.status(500).json({ error: "Encryption or IBM API call failed" });
   }
 });
 
-// 🧩 Local decrypt test (optional)
+// 🔒 Optional local decrypt endpoint
 app.post("/api/decrypt", (req, res) => {
   try {
-    const { encryptedBase64 } = req.body;
-
-    if (!fs.existsSync(path.join(__dirname, "private.pem"))) {
-      return res.status(400).json({ error: "private.pem not found" });
-    }
-
-    const privateKey = fs.readFileSync(path.join(__dirname, "private.pem"), "utf8");
+    const { encryptedBase64, privateKeyPem } = req.body;
+    if (!encryptedBase64 || !privateKeyPem)
+      return res.status(400).json({ error: "Provide encryptedBase64 and privateKeyPem" });
 
     const decrypted = crypto.privateDecrypt(
-      {
-        key: privateKey,
-        padding: crypto.constants.RSA_PKCS1_PADDING,
-      },
+      { key: privateKeyPem, padding: crypto.constants.RSA_PKCS1_PADDING },
       Buffer.from(encryptedBase64, "base64")
     );
 
     res.json({ decrypted: decrypted.toString("utf8") });
   } catch (e) {
-    console.error("Decrypt failed:", e.message);
+    console.error("Decryption failed:", e.message);
     res.status(400).json({ error: "Decryption failed" });
   }
 });
 
-app.listen(5000, () =>
-  console.log("✅ Backend running at http://localhost:5000")
-);
+// 🔒 Example protected API using x-hash
+app.post("/api/protected", (req, res) => {
+  const xHash = req.headers["x-hash"];
+  if (!xHash) return res.status(401).json({ error: "x-hash header missing" });
+
+  res.json({ message: "Protected API accessed!", xHashReceived: xHash });
+});
+
+app.listen(5000, () => console.log("✅ Backend running at http://localhost:5000"));
