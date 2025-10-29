@@ -1,27 +1,18 @@
-# --- STAGE 1: Build the React Application ---
-FROM node:20-alpine as builder
+# Use Node 22 (required for Vite 7 + React 19)
+FROM node:22
 
+# Set working directory
 WORKDIR /app
 
-# 1. Copy all necessary files from the local frontend/ directory 
-#    into the container's /app directory. This includes package.json, 
-#    index.html, vite.config.js, and the entire src/ folder.
-COPY frontend/ .
-
-# 2. Install dependencies
+# Copy package files and install dependencies
+COPY package*.json ./
 RUN npm install
 
-# 3. Run the build command
-RUN npm run build
+# Copy the rest of the app
+COPY . .
 
-# --- STAGE 2: Serve the Static Files with Nginx ---
-FROM nginx:alpine
+# Expose Vite dev server port
+EXPOSE 5173
 
-# Copy the built static files from the builder stage into Nginx's HTML directory
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Nginx runs on port 80 by default
-EXPOSE 80
-
-# The default CMD in nginx:alpine runs Nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Run the development server
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
